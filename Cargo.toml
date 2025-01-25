@@ -2,6 +2,10 @@
 name = "dbk64"
 version = "0.0.1"
 edition = "2021"
+authors = ["Alice42069"]
+readme = "README.md"
+repository = "https://github.com/Alice42069/dbk64"
+license = "MIT"
 
 [dependencies]
 dataview = "1.0.1"
