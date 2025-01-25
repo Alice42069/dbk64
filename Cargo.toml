@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 authors = ["Alice42069"]
 readme = "README.md"
+description = "A simple library that uses cheat engines dbk64 driver to read/write process memory"
 repository = "https://github.com/Alice42069/dbk64"
 license = "MIT"
 
