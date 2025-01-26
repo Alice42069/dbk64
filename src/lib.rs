@@ -15,7 +15,6 @@ use handle::RawHandle;
 mod handle;
 
 // https://github.com/cheat-engine/cheat-engine/blob/master/Cheat%20Engine/dbk32/DBK32functions.pas
-
 const FILE_READ_ACCESS: u32 = 0x0001;
 const FILE_WRITE_ACCESS: u32 = 0x0002;
 const FILE_RW_ACCESS: u32 = FILE_READ_ACCESS | FILE_WRITE_ACCESS;
@@ -32,6 +31,12 @@ const IOCTL_CE_WRITEMEMORY: u32 =
 
 const IOCTL_CE_OPENPROCESS: u32 =
     (IOCTL_UNKNOWN_BASE << 16) | (0x0802 << 2) | METHOD_BUFFERED | (FILE_RW_ACCESS << 14);
+
+const IOCTL_CE_GETPEPROCESS: u32 =
+    (IOCTL_UNKNOWN_BASE << 16) | (0x0805 << 2) | METHOD_BUFFERED | (FILE_RW_ACCESS << 14);
+
+const SECTION_BASE_ADDRESS_OFFSETS: [i32; 7] =
+    [0x0520, 0x03C8, 0x03C0, 0x03B0, 0x0270, 0x01D0, 0x01F8];
 
 pub struct DBK64 {
     handle: RawHandle,
@@ -90,6 +95,20 @@ impl DBK64 {
         Some(output)
     }
 
+    pub fn get_base_address(&self, process_id: u64) -> Option<u64> {
+        let e_process = self.getpeprocess(process_id as u32)?;
+
+        for i in SECTION_BASE_ADDRESS_OFFSETS {
+            let address = self.read::<u64>(process_id, e_process + i as u64).ok()?;
+
+            if address > 0 {
+                return Some(address);
+            }
+        }
+
+        return None;
+    }
+
     #[allow(clippy::uninit_assumed_init)]
     pub fn read<T: Pod + Sized>(&self, process_id: u64, address: u64) -> Result<T> {
         let mut object: T = unsafe { MaybeUninit::uninit().assume_init() };
@@ -125,7 +144,7 @@ impl DBK64 {
 
             let chunk = &mut buffer[start..start + chunk_size];
 
-            self.read_memory(process_id, address, chunk)?;
+            self.readmemory(process_id, address, chunk)?;
 
             start += chunk_size;
             address += chunk_size as u64;
@@ -146,7 +165,7 @@ impl DBK64 {
 
             let chunk = &data[start..start + chunk_size];
 
-            self.write_memory(process_id, address, chunk)?;
+            self.writememory(process_id, address, chunk)?;
 
             start += chunk_size;
             address += chunk_size as u64;
@@ -155,7 +174,31 @@ impl DBK64 {
         Ok(())
     }
 
-    fn read_memory(&self, processid: u64, startaddress: u64, bytestoread: &mut [u8]) -> Result<()> {
+    fn getpeprocess(&self, processid: u32) -> Option<u64> {
+        let mut peprocess = 0_u64;
+        let mut bytesreturned = 0_u32;
+
+        unsafe {
+            if DeviceIoControl(
+                self.handle.handle(),
+                IOCTL_CE_GETPEPROCESS,
+                Some(&processid as *const _ as *const _),
+                size_of::<u32>() as u32,
+                Some(&mut peprocess as *mut _ as *mut _),
+                size_of::<u64>() as u32,
+                Some(&mut bytesreturned),
+                None,
+            )
+            .is_err()
+            {
+                return None;
+            }
+        }
+
+        Some(peprocess)
+    }
+
+    fn readmemory(&self, processid: u64, startaddress: u64, bytestoread: &mut [u8]) -> Result<()> {
         if bytestoread.len() > u16::MAX as usize {
             panic!("Buffer size exceeds maximum allowable size.");
         }
@@ -184,7 +227,7 @@ impl DBK64 {
         Ok(())
     }
 
-    fn write_memory(&self, processid: u64, startaddress: u64, bytestowrite: &[u8]) -> Result<()> {
+    fn writememory(&self, processid: u64, startaddress: u64, bytestowrite: &[u8]) -> Result<()> {
         if bytestowrite.len() > u16::MAX as usize {
             panic!("Data size exceeds maximum allowable size.");
         }
