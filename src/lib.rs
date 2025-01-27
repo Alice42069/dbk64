@@ -4,6 +4,7 @@ use std::{
     ptr::copy_nonoverlapping,
 };
 
+use types::Pointer;
 use windows::core::{Result, PCSTR};
 use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE};
 use windows::Win32::Storage::FileSystem::*;
@@ -13,6 +14,7 @@ use dataview::{Pod, PodMethods};
 
 use handle::RawHandle;
 mod handle;
+pub mod types;
 
 // https://github.com/cheat-engine/cheat-engine/blob/master/Cheat%20Engine/dbk32/DBK32functions.pas
 const FILE_READ_ACCESS: u32 = 0x0001;
@@ -39,11 +41,12 @@ const SECTION_BASE_ADDRESS_OFFSETS: [i32; 7] =
     [0x0520, 0x03C8, 0x03C0, 0x03B0, 0x0270, 0x01D0, 0x01F8];
 
 pub struct DBK64 {
+    process_id: u64,
     handle: RawHandle,
 }
 
 impl DBK64 {
-    pub fn open(name: Option<&'static str>) -> Result<Self> {
+    pub fn open(name: Option<&'static str>, process_id: u64) -> Result<Self> {
         let file_name = CString::new(format!(r"\\.\{}", name.unwrap_or("dbk64"))).unwrap();
 
         let handle = unsafe {
@@ -58,12 +61,94 @@ impl DBK64 {
             )?
         };
 
-        Ok(Self {
+        let dbk64 = Self {
+            process_id,
             handle: handle.into(),
-        })
+        };
+
+        let _ = dbk64.openprocess(dbk64.process_id as u32).unwrap();
+
+        Ok(dbk64)
     }
 
-    pub fn open_process(&self, process_id: u32) -> Option<OpenProcessOutput> {
+    pub fn get_base_address(&self) -> Option<u64> {
+        let e_process = self.getpeprocess(self.process_id as u32)?;
+
+        for i in SECTION_BASE_ADDRESS_OFFSETS {
+            let address = self.read::<u64>(e_process + i as u64).ok()?;
+
+            if address > 0 {
+                return Some(address);
+            }
+        }
+
+        return None;
+    }
+
+    #[allow(clippy::uninit_assumed_init)]
+    pub fn read<T: Pod + Sized>(&self, address: u64) -> Result<T> {
+        let mut object: T = unsafe { MaybeUninit::uninit().assume_init() };
+        self.read_into(address, &mut object)?;
+        Ok(object)
+    }
+
+    pub fn read_into<T: Pod + ?Sized>(&self, address: u64, out: &mut T) -> Result<()> {
+        self.read_raw_into(address, out.as_bytes_mut())
+    }
+
+    pub fn read_raw(&self, address: u64, length: usize) -> Result<Vec<u8>> {
+        let mut buffer = vec![0u8; length];
+        self.read_raw_into(address, &mut buffer)?;
+        Ok(buffer)
+    }
+
+    pub fn read_raw_into(&self, mut address: u64, buffer: &mut [u8]) -> Result<()> {
+        let mut start = 0;
+
+        while start < buffer.len() {
+            let chunk_size = (buffer.len() - start).min(u16::MAX as usize);
+
+            let chunk = &mut buffer[start..start + chunk_size];
+
+            self.readmemory(self.process_id, address, chunk)?;
+
+            start += chunk_size;
+            address += chunk_size as u64;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_pointer<T: Pod + Sized>(&self, pointer: Pointer<T>) -> Result<T> {
+        Ok(self.read(pointer.inner)?)
+    }
+
+    pub fn read_pointer_into<T: Pod + Sized>(&self, pointer: Pointer<T>, out: &mut T) -> Result<()> {
+        self.read_into(pointer.inner, out)
+    }
+
+    pub fn write<T: Pod + ?Sized>(&self, address: u64, data: &T) -> Result<()> {
+        self.write_raw(address, data.as_bytes())
+    }
+
+    pub fn write_raw(&self, mut address: u64, data: &[u8]) -> Result<()> {
+        let mut start = 0;
+
+        while start < data.len() {
+            let chunk_size = (data.len() - start).min(u16::MAX as usize);
+
+            let chunk = &data[start..start + chunk_size];
+
+            self.writememory(self.process_id, address, chunk)?;
+
+            start += chunk_size;
+            address += chunk_size as u64;
+        }
+
+        Ok(())
+    }
+
+    fn openprocess(&self, process_id: u32) -> Option<OpenProcessOutput> {
         if process_id == 0 {
             return None;
         }
@@ -93,85 +178,6 @@ impl DBK64 {
         }
 
         Some(output)
-    }
-
-    pub fn get_base_address(&self, process_id: u64) -> Option<u64> {
-        let e_process = self.getpeprocess(process_id as u32)?;
-
-        for i in SECTION_BASE_ADDRESS_OFFSETS {
-            let address = self.read::<u64>(process_id, e_process + i as u64).ok()?;
-
-            if address > 0 {
-                return Some(address);
-            }
-        }
-
-        return None;
-    }
-
-    #[allow(clippy::uninit_assumed_init)]
-    pub fn read<T: Pod + Sized>(&self, process_id: u64, address: u64) -> Result<T> {
-        let mut object: T = unsafe { MaybeUninit::uninit().assume_init() };
-        self.read_into(process_id, address, &mut object)?;
-        Ok(object)
-    }
-
-    pub fn read_into<T: Pod + ?Sized>(
-        &self,
-        process_id: u64,
-        address: u64,
-        out: &mut T,
-    ) -> Result<()> {
-        self.read_raw_into(process_id, address, out.as_bytes_mut())
-    }
-
-    pub fn read_raw(&self, process_id: u64, address: u64, length: usize) -> Result<Vec<u8>> {
-        let mut buffer = vec![0u8; length];
-        self.read_raw_into(process_id, address, &mut buffer)?;
-        Ok(buffer)
-    }
-
-    pub fn read_raw_into(
-        &self,
-        process_id: u64,
-        mut address: u64,
-        buffer: &mut [u8],
-    ) -> Result<()> {
-        let mut start = 0;
-
-        while start < buffer.len() {
-            let chunk_size = (buffer.len() - start).min(u16::MAX as usize);
-
-            let chunk = &mut buffer[start..start + chunk_size];
-
-            self.readmemory(process_id, address, chunk)?;
-
-            start += chunk_size;
-            address += chunk_size as u64;
-        }
-
-        Ok(())
-    }
-
-    pub fn write<T: Pod + ?Sized>(&self, process_id: u64, address: u64, data: &T) -> Result<()> {
-        self.write_raw(process_id, address, data.as_bytes())
-    }
-
-    pub fn write_raw(&self, process_id: u64, mut address: u64, data: &[u8]) -> Result<()> {
-        let mut start = 0;
-
-        while start < data.len() {
-            let chunk_size = (data.len() - start).min(u16::MAX as usize);
-
-            let chunk = &data[start..start + chunk_size];
-
-            self.writememory(process_id, address, chunk)?;
-
-            start += chunk_size;
-            address += chunk_size as u64;
-        }
-
-        Ok(())
     }
 
     fn getpeprocess(&self, processid: u32) -> Option<u64> {

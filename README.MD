@@ -9,7 +9,7 @@ This library is available on [crates.io](https://crates.io/crates/dbk64).
 
 ```text
 [dependencies]
-dbk64 = "0.0.2"
+dbk64 = "0.0.3"
 ```
 
 ## Example
@@ -17,22 +17,17 @@ dbk64 = "0.0.2"
 use dbk64::DBK64;
 
 fn main() {
-    let dbk64 = DBK64::open(None).unwrap();
+    let dbk64 = DBK64::open(None, 1234).unwrap(); // process id
 
-    let process_id = 7172_u64;
-
-    let process = dbk64.open_process(process_id as u32).unwrap();
-    dbg!(&process);
-
-    let base_addrses = dbk64.get_base_address(process_id).unwrap();
+    let base_addrses = dbk64.get_base_address().unwrap();
 
     dbk64
         .write_raw(
-            process_id,
             base_addrses + 0xD976C9,
             &[0x48, 0x31, 0xc0, 0xFF, 0x86, 0x30, 0x08],
         )
         .unwrap();
+    
 }
 
 ```
