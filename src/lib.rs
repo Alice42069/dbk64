@@ -85,6 +85,7 @@ impl DBK64 {
         return None;
     }
 
+    // most functions below are taken from: https://github.com/memflow/memflow/blob/main/memflow/src/mem/memory_view/mod.rs
     #[allow(clippy::uninit_assumed_init)]
     pub fn read<T: Pod + Sized>(&self, address: u64) -> Result<T> {
         let mut object: T = unsafe { MaybeUninit::uninit().assume_init() };
@@ -123,8 +124,24 @@ impl DBK64 {
         Ok(self.read(pointer.inner)?)
     }
 
-    pub fn read_pointer_into<T: Pod + Sized>(&self, pointer: Pointer<T>, out: &mut T) -> Result<()> {
+    pub fn read_pointer_into<T: Pod + Sized>(
+        &self,
+        pointer: Pointer<T>,
+        out: &mut T,
+    ) -> Result<()> {
         self.read_into(pointer.inner, out)
+    }
+
+    pub fn read_utf8(&self, address: u64, max_length: usize) -> Result<String> {
+        let mut buffer = vec![0; max_length];
+
+        self.read_raw_into(address, &mut buffer).unwrap();
+
+        if let Some((n, _)) = buffer.iter().enumerate().find(|(_, c)| **c == 0_u8) {
+            buffer.truncate(n);
+        }
+
+        Ok(String::from_utf8(buffer)?)
     }
 
     pub fn write<T: Pod + ?Sized>(&self, address: u64, data: &T) -> Result<()> {
@@ -146,6 +163,10 @@ impl DBK64 {
         }
 
         Ok(())
+    }
+
+    pub fn write_pointer<T: Pod + ?Sized>(&self, pointer: Pointer<T>, data: &T) -> Result<()> {
+        self.write(pointer.inner, data)
     }
 
     fn openprocess(&self, process_id: u32) -> Option<OpenProcessOutput> {
