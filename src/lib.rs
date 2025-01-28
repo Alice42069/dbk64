@@ -152,7 +152,7 @@ impl DBK64 {
         let mut start = 0;
 
         while start < data.len() {
-            let chunk_size = (data.len() - start).min(u16::MAX as usize);
+            let chunk_size = (data.len() - start).min(256 as usize);
 
             let chunk = &data[start..start + chunk_size];
 

@@ -9,7 +9,7 @@ This library is available on [crates.io](https://crates.io/crates/dbk64).
 
 ```text
 [dependencies]
-dbk64 = "0.0.5"
+dbk64 = "0.0.6"
 ```
 
 ## Example
