@@ -1,11 +1,10 @@
 use std::{
-    ffi::CString,
     mem::{size_of, zeroed, MaybeUninit},
     ptr::copy_nonoverlapping,
 };
 
 use types::Pointer;
-use windows::core::{s, Result, PCSTR};
+use windows::core::{s, Result};
 use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE};
 use windows::Win32::Storage::FileSystem::*;
 use windows::Win32::System::IO::DeviceIoControl;
@@ -46,12 +45,10 @@ pub struct DBK64 {
 }
 
 impl DBK64 {
-    pub fn open(name: Option<&'static str>, process_id: u64) -> Result<Self> {
-        let file_name = CString::new(format!(r"\\\\.\\{}", name.unwrap_or("hd64"))).unwrap();
-
+    pub fn open(process_id: u64) -> Result<Self> {
         let handle = unsafe {
             CreateFileA(
-                PCSTR::from_raw(file_name.as_ptr() as _),
+                s!("\\\\.\\dbk64"),
                 GENERIC_READ.0 | GENERIC_WRITE.0,
                 FILE_SHARE_MODE(0),
                 None,
