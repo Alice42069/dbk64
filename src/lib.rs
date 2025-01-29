@@ -5,7 +5,7 @@ use std::{
 };
 
 use types::Pointer;
-use windows::core::{Result, PCSTR};
+use windows::core::{s, Result, PCSTR};
 use windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE};
 use windows::Win32::Storage::FileSystem::*;
 use windows::Win32::System::IO::DeviceIoControl;
@@ -47,7 +47,7 @@ pub struct DBK64 {
 
 impl DBK64 {
     pub fn open(name: Option<&'static str>, process_id: u64) -> Result<Self> {
-        let file_name = CString::new(format!(r"\\.\{}", name.unwrap_or("dbk64"))).unwrap();
+        let file_name = CString::new(format!(r"\\\\.\\{}", name.unwrap_or("hd64"))).unwrap();
 
         let handle = unsafe {
             CreateFileA(
