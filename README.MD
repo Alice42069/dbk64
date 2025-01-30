@@ -17,7 +17,7 @@ dbk64 = "1.0.0"
 use dbk64::DBK64;
 
 fn main() {
-    let dbk64 = DBK64::open(Some("dbk64)", 1234).unwrap(); // process id
+    let dbk64 = DBK64::open(Some("dbk64"), 1234).unwrap(); // process id
 
     let base_addrses = dbk64.get_base_address().unwrap();
 
